@@ -21,7 +21,6 @@ from datasets import load_dataset
 PUNCT_MAP = {
     '?': 'QUESTION',
     '.': 'PERIOD',
-    '!': 'PERIOD',
     ',': 'COMMA',
 }
 
@@ -71,17 +70,13 @@ def parse_token(token: str):
 
 
 def _is_junk_token(token: str) -> bool:
-    """True если токен не несёт лингвистической ценности."""
-    # Чисто цифровой или цифро-дефисный (номера страниц, даты, диапазоны)
     if re.fullmatch(r'[\d\-–—]+', token):
         return True
-    # Одиночные буквы-аббревиатуры типа "б", "с", "ж", "е", "а"
-    if re.fullmatch(r'[а-яәіңғүұқөһa-z]', token):
-        return True
-    # Спецсимволы и номера
+    # УБРАТЬ: одиночные буквы — в казахском это валидные частицы
+    # if re.fullmatch(r'[а-яәіңғүұқөһa-z]', token):
+    #     return True
     if re.fullmatch(r'[№@#$%^&+=<>|\\~`]+', token):
         return True
-    # URL-подобное
     if re.search(r'https?|www\.', token):
         return True
     return False
@@ -141,49 +136,17 @@ def split_into_chunks(pairs, min_words=8, max_words=60):
 # ФИЛЬТРАЦИЯ ЧАНКОВ
 # ─────────────────────────────────────────────
 
-def is_valid_chunk(words: list, labels: list) -> bool:
-    """
-    True если чанк подходит для обучения.
-    Все проверки качества сосредоточены здесь.
-    """
-    n = len(words)
-
-    # 1. Длина
-    if n < 8 or n > 60:
+def is_valid_chunk(words, labels):
+    # УБРАТЬ это условие:
+    # if labels[-1] not in ('PERIOD', 'QUESTION'):
+    #     return False
+    
+    # Оставить только минимальные проверки:
+    if len(words) < 8 or len(words) > 60:
         return False
-
-    # 2. Последний токен должен завершать предложение
-    if labels[-1] not in ('PERIOD', 'QUESTION'):
+    punct_ratio = sum(1 for l in labels if l != 'O') / len(words)
+    if punct_ratio < 0.03 or punct_ratio > 0.40:
         return False
-
-    # 3. Доля пунктуации: 5–35%
-    punct_ratio = sum(1 for l in labels if l != 'O') / n
-    if punct_ratio < 0.05 or punct_ratio > 0.35:
-        return False
-
-    # 4. Нет тире в начале (диалоги, интервью, списки)
-    if words[0] in ('–', '-', '—', '*', '•'):
-        return False
-
-    # 5. Нет двоеточий и точек с запятой (библиографии)
-    text = ' '.join(words)
-    if ':' in text or ';' in text:
-        return False
-
-    # 6. Нет слэшей и скобок (ссылки, библиографии)
-    if any(c in text for c in ['/', '\\', '[', ']', '//']):
-        return False
-
-    # 7. Нет цифровых кластеров (номера страниц, ISBN)
-    digit_tokens = sum(1 for w in words if re.search(r'\d', w))
-    if digit_tokens / n > 0.15:
-        return False
-
-    # 8. Минимальная средняя длина слова (казахские слова длиннее 2 букв)
-    avg_len = sum(len(w) for w in words) / n
-    if avg_len < 3.0:
-        return False
-
     return True
 
 
